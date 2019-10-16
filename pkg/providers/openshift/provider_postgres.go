@@ -1,10 +1,17 @@
 package openshift
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"strings"
+
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/tools/remotecommand"
+	"sigs.k8s.io/controller-runtime/pkg/client/config"
 
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
@@ -33,9 +40,10 @@ var (
 	postgresProviderName = "openshift-postgres-template"
 	// default openshift create paramaters
 	defaultPostgresPort        = 5432
-	defaultPostgresUser        = "user"
+	defaultPostgresUser        = "keycloak"
 	defaultPostgresPassword    = "password"
 	defaultPostgresUserKey     = "user"
+	defaultPostgresDatabase    = "keycloak"
 	defaultPostgresPasswordKey = "password"
 	defaultPostgresDatabaseKey = "database"
 	defaultCredentialsSec      = "postgres-credentials"
@@ -127,16 +135,27 @@ func (p *OpenShiftPostgresProvider) CreatePostgres(ctx context.Context, ps *v1al
 	// check if deployment is ready and return connection details
 	for _, s := range dpl.Status.Conditions {
 		if s.Type == appsv1.DeploymentAvailable && s.Status == "True" {
-			p.Logger.Info("Found postgres deployment")
-			return &providers.PostgresInstance{
-				DeploymentDetails: &providers.PostgresDeploymentDetails{
-					Username: string(sec.Data["user"]),
-					Password: string(sec.Data["password"]),
-					Database: string(sec.Data["database"]),
-					Host:     fmt.Sprintf("%s.%s.svc.cluster.local", ps.Name, ps.Namespace),
-					Port:     defaultPostgresPort,
-				},
-			}, "postgres deployment is complete", nil
+			// create user, db and set privilages
+			pgCommand := getPostgresProvisionCommand()
+			podToExec, err := k8sclient.getDeploymentPod(ps.Name, ps.Namespace)
+			if err != nil {
+				errMsg := "failed to get postgres pod"
+				return nil, v1alpha1.StatusMessage(errMsg), errorUtil.Wrap(err, errMsg)
+			}
+			updatedPod := execIntoPod(podToExec, pgCommand, ps.Namespace)
+
+			if updatedPod {
+				p.Logger.Info("Found postgres deployment")
+				return &providers.PostgresInstance{
+					DeploymentDetails: &providers.PostgresDeploymentDetails{
+						Username: string(sec.Data["user"]),
+						Password: string(sec.Data["password"]),
+						Database: string(sec.Data["database"]),
+						Host:     fmt.Sprintf("%s.%s.svc.cluster.local", ps.Name, ps.Namespace),
+						Port:     defaultPostgresPort,
+					},
+				}, "postgres deployment is complete", nil
+			}
 		}
 	}
 
@@ -482,7 +501,7 @@ func buildDefaultPostgresSecret(ps *v1alpha1.Postgres) *v1.Secret {
 		StringData: map[string]string{
 			"user":     defaultPostgresUser,
 			"password": defaultPostgresPassword,
-			"database": ps.Name,
+			"database": defaultPostgresDatabase,
 		},
 		Type: v1.SecretTypeOpaque,
 	}
@@ -501,4 +520,107 @@ func envVarFromSecret(envVarName string, secretName, secretKey string) v1.EnvVar
 			},
 		},
 	}
+}
+
+type k8s struct {
+	clientset kubernetes.Interface
+}
+
+var (
+	k8sclient = getK8Client()
+)
+
+// return the postgres command to create user, database and grant privileges,
+func getPostgresProvisionCommand() (command string) {
+	command = "OUT=$(psql postgres -tAc \"SELECT 1 FROM pg_roles WHERE rolname='keycloak'\"); " +
+		"if [ $OUT -eq 1 ]; then echo \"DB exists\"; exit 0; fi " +
+		"&& psql -c \"CREATE USER keycloak WITH PASSWORD '" + defaultPostgresPassword + "'\" " +
+		"&& psql -c \"CREATE DATABASE " + defaultPostgresDatabase + "\" " +
+		"&& psql -c \"GRANT ALL PRIVILEGES ON DATABASE " + defaultPostgresDatabase + " TO keycloak\" " +
+		"&& psql -c \"ALTER USER " + defaultPostgresUser + " WITH SUPERUSER\""
+
+	return command
+}
+
+// exec into a pod
+func execIntoPod(podName string, provisionCommand string, ns string) (provisioned bool) {
+	command := []string{"/bin/bash", "-c", provisionCommand}
+	logrus.Infof("Running exec to %s in pod", podName)
+	_, stderr, err := k8sclient.runExec(command, podName, ns)
+	if err != nil {
+		logrus.Errorf("Error exec into pod: %v: , command: %s", err, command)
+		logrus.Errorf(stderr)
+		return false
+	}
+	logrus.Info("Exec successfully completed")
+	return true
+}
+
+// run exec command on pod
+func (cl *k8s) runExec(command []string, podName, namespace string) (string, string, error) {
+
+	req := cl.clientset.CoreV1().RESTClient().Post().
+		Resource("pods").
+		Name(podName).
+		Namespace(namespace).
+		SubResource("exec")
+
+	req.VersionedParams(&v1.PodExecOptions{
+		Command: command,
+		Stdin:   false,
+		Stdout:  true,
+		Stderr:  true,
+		TTY:     false,
+	}, scheme.ParameterCodec)
+
+	cfg, _ := config.GetConfig()
+	exec, err := remotecommand.NewSPDYExecutor(cfg, "POST", req.URL())
+	if err != nil {
+		return "", "", fmt.Errorf("error while creating executor: %v", err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	var stdin io.Reader
+	err = exec.Stream(remotecommand.StreamOptions{
+		Stdin:  stdin,
+		Stdout: &stdout,
+		Stderr: &stderr,
+		Tty:    false,
+	})
+	if err != nil {
+		return stdout.String(), stderr.String(), err
+	}
+
+	return stdout.String(), stderr.String(), nil
+}
+
+// return the k8s client
+func getK8Client() *k8s {
+	cfg, err := config.GetConfig()
+	if err != nil {
+		logrus.Errorf(err.Error())
+	}
+	client := k8s{}
+	client.clientset, err = kubernetes.NewForConfig(cfg)
+	if err != nil {
+		logrus.Errorf(err.Error())
+		return nil
+	}
+	return &client
+}
+
+//getDeploymentPod queries all pods is a selected namespace by LabelSelector = deployment
+func (cl *k8s) getDeploymentPod(name string, ns string) (podName string, err error) {
+	api := cl.clientset.CoreV1()
+	listOptions := metav1.ListOptions{
+		LabelSelector: "deployment=" + name,
+	}
+	podList, _ := api.Pods(ns).List(listOptions)
+	podListItems := podList.Items
+	if len(podListItems) == 0 {
+		logrus.Errorf("Failed to find pod to exec into. List of pods: %v", podListItems)
+		return "", err
+	}
+	podName = podListItems[0].Name
+	return podName, nil
 }

@@ -2,11 +2,13 @@ module github.com/integr8ly/cloud-resource-operator
 
 require (
 	github.com/aws/aws-sdk-go v1.23.17
+	github.com/blang/semver v3.5.1+incompatible // indirect
+	github.com/docker/libtrust v0.0.0-20160708172513-aabc10ec26b7 // indirect
 	github.com/fatih/color v1.7.0 // indirect
+	github.com/fsouza/go-dockerclient v1.4.4 // indirect
 	github.com/go-openapi/spec v0.19.0
 	github.com/gogo/protobuf v1.3.0 // indirect
 	github.com/golang/groupcache v0.0.0-20190702054246-869f871628b6 // indirect
-	github.com/google/go-cmp v0.3.1 // indirect
 	github.com/google/uuid v1.1.1
 	github.com/googleapis/gnostic v0.3.1 // indirect
 	github.com/gregjones/httpcache v0.0.0-20190611155906-901d90724c79 // indirect
@@ -33,7 +35,6 @@ require (
 	golang.org/x/oauth2 v0.0.0-20190604053449-0f29369cfe45 // indirect
 	golang.org/x/tools v0.0.0-20190924052046-3ac2a5bbd98a // indirect
 	google.golang.org/appengine v1.6.2 // indirect
-	google.golang.org/grpc v1.22.0 // indirect
 	gopkg.in/check.v1 v1.0.0-20190902080502-41f04d3bba15 // indirect
 	k8s.io/api v0.0.0-20191003035645-10e821c09743
 	k8s.io/apimachinery v0.0.0-20191003115452-c31ffd88d5d2
