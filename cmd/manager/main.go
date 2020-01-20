@@ -52,7 +52,7 @@ func printVersion() {
 
 func init() {
 	// Register custom metrics with the global prometheus registry
-	resources.AddCustomMetrics()
+	resources.StartMetricsLoop()
 }
 
 func main() {
