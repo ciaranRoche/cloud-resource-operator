@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/aws/aws-sdk-go/service/sts"
@@ -11,6 +12,7 @@ import (
 	"github.com/integr8ly/cloud-resource-operator/pkg/apis/integreatly/v1alpha1/types"
 
 	croType "github.com/integr8ly/cloud-resource-operator/pkg/apis/integreatly/v1alpha1/types"
+	croResources "github.com/integr8ly/cloud-resource-operator/pkg/resources"
 
 	"github.com/aws/aws-sdk-go/service/elasticache/elasticacheiface"
 	"github.com/sirupsen/logrus"
@@ -31,7 +33,8 @@ import (
 )
 
 const (
-	redisProviderName = "aws-elasticache"
+	CRO_AWS_ELASTICACHE_SERVICE_MAINTENANCE = "cro_aws_elasticache_service_maintenance"
+	redisProviderName                       = "aws-elasticache"
 	// default create params
 	defaultCacheNodeType     = "cache.t2.micro"
 	defaultEngineVersion     = "3.2.10"
@@ -99,6 +102,35 @@ func (p *AWSRedisProvider) CreateRedis(ctx context.Context, r *v1alpha1.Redis) (
 	// setup aws elasticache cluster sdk session
 	cacheSvc, stsSvc := createAWSService(stratCfg, providerCreds)
 
+	// Retrieve service maintenance updates, create and export Prometheus metrics
+	output, err := cacheSvc.DescribeServiceUpdates(&elasticache.DescribeServiceUpdatesInput{})
+	if err != nil {
+		msg := "elasticache serviceupdates error"
+		return nil, croType.StatusMessage(msg), errorUtil.Wrap(err, msg)
+	}
+
+	logrus.Info(fmt.Sprintf("there are elasticache serviceupdates: %d available", len(output.ServiceUpdates)))
+	metricName := CRO_AWS_ELASTICACHE_SERVICE_MAINTENANCE
+	for _, su := range output.ServiceUpdates {
+		metricLabels := map[string]string{}
+
+		metricLabels["AutoUpdateAfterRecommendedApplyByDate"] = strconv.FormatBool(*su.AutoUpdateAfterRecommendedApplyByDate)
+		metricLabels["Engine"] = *su.Engine
+		metricLabels["EstimatedUpdateTime"] = *su.EstimatedUpdateTime
+		metricLabels["ServiceUpdateDescription"] = *su.ServiceUpdateDescription
+		metricLabels["ServiceUpdateEndDate"] = strconv.FormatInt((*su.ServiceUpdateEndDate).Unix(), 10)
+		metricLabels["ServiceUpdateName"] = *su.ServiceUpdateName
+		metricLabels["ServiceUpdateRecommendedApplyByDate"] = strconv.FormatInt((*su.ServiceUpdateRecommendedApplyByDate).Unix(), 10)
+		metricLabels["ServiceUpdateReleaseDate"] = strconv.FormatInt((*su.ServiceUpdateReleaseDate).Unix(), 10)
+		metricLabels["ServiceUpdateSeverity"] = *su.ServiceUpdateSeverity
+		metricLabels["ServiceUpdateStatus"] = *su.ServiceUpdateStatus
+		metricLabels["ServiceUpdateType"] = *su.ServiceUpdateType
+
+		metricEpochTimestamp := (*su.ServiceUpdateRecommendedApplyByDate).Unix()
+
+		croResources.SetMetric(metricName, metricLabels, float64(metricEpochTimestamp)/1e9)
+	}
+
 	// create the aws elasticache cluster
 	return p.createElasticacheCluster(ctx, r, cacheSvc, stsSvc, elasticacheCreateConfig, stratCfg)
 }
@@ -108,6 +140,7 @@ func createAWSService(stratCfg *StrategyConfig, providerCreds *AWSCredentials) (
 		Region:      aws.String(stratCfg.Region),
 		Credentials: credentials.NewStaticCredentials(providerCreds.AccessKeyID, providerCreds.SecretAccessKey, ""),
 	}))
+
 	return elasticache.New(sess), sts.New(sess)
 }
 

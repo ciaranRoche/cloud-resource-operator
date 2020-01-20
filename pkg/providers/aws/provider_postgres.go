@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"time"
 
 	croType "github.com/integr8ly/cloud-resource-operator/pkg/apis/integreatly/v1alpha1/types"
+	croResources "github.com/integr8ly/cloud-resource-operator/pkg/resources"
 
 	"github.com/aws/aws-sdk-go/aws/awserr"
 
@@ -35,8 +37,9 @@ import (
 )
 
 const (
-	postgresProviderName       = "aws-rds"
-	DefaultAwsIdentifierLength = 40
+	CRO_AWS_RDS_SERVICE_MAINTENANCE = "cro_aws_rds_service_maintenance"
+	postgresProviderName            = "aws-rds"
+	DefaultAwsIdentifierLength      = 40
 	// default create options
 	defaultAwsPostgresDeletionProtection = true
 	defaultAwsPostgresPort               = 5432
@@ -128,6 +131,32 @@ func (p *AWSPostgresProvider) CreatePostgres(ctx context.Context, pg *v1alpha1.P
 
 	// setup aws RDS instance sdk session
 	rdsSession := createRDSSession(stratCfg, providerCreds)
+
+	// Retrieve service maintenance updates, create and export Prometheus metrics
+	output, err := rdsSession.DescribePendingMaintenanceActions(&rds.DescribePendingMaintenanceActionsInput{})
+	if err != nil {
+		msg := "rds serviceupdates error"
+		return nil, croType.StatusMessage(msg), errorUtil.Wrap(err, msg)
+	}
+
+	logrus.Info(fmt.Sprintf("rds serviceupdates: %d available", len(output.PendingMaintenanceActions)))
+	metricName := CRO_AWS_RDS_SERVICE_MAINTENANCE
+	for _, su := range output.PendingMaintenanceActions {
+		metricLabels := map[string]string{}
+
+		metricLabels["ResourceIdentifier"] = *su.ResourceIdentifier
+
+		for _, pma := range su.PendingMaintenanceActionDetails {
+
+			metricLabels["AutoAppliedAfterDate"] = strconv.FormatInt((*pma.AutoAppliedAfterDate).Unix(), 10)
+			metricLabels["CurrentApplyDate"] = strconv.FormatInt((*pma.CurrentApplyDate).Unix(), 10)
+			metricLabels["Description"] = *pma.Description
+
+			metricEpochTimestamp := (*pma.AutoAppliedAfterDate).Unix()
+
+			croResources.SetMetric(metricName, metricLabels, float64(metricEpochTimestamp)/1e9)
+		}
+	}
 
 	// create the aws RDS instance
 	return p.createRDSInstance(ctx, pg, rdsSession, rdsCfg)
