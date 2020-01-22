@@ -128,7 +128,11 @@ func (p *AWSRedisProvider) CreateRedis(ctx context.Context, r *v1alpha1.Redis) (
 
 		metricEpochTimestamp := (*su.ServiceUpdateRecommendedApplyByDate).Unix()
 
-		croResources.SetMetric(metricName, metricLabels, float64(metricEpochTimestamp)/1e9)
+		err = croResources.SetMetric(metricName, metricLabels, float64(metricEpochTimestamp)/1e9)
+		if err != nil {
+			msg := fmt.Sprintf("exception calling SetMetric with metricName: %s", metricName)
+			return nil, croType.StatusMessage(msg), errorUtil.Wrap(err, msg)
+		}
 	}
 
 	// create the aws elasticache cluster

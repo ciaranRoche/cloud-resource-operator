@@ -154,7 +154,11 @@ func (p *AWSPostgresProvider) CreatePostgres(ctx context.Context, pg *v1alpha1.P
 
 			metricEpochTimestamp := (*pma.AutoAppliedAfterDate).Unix()
 
-			croResources.SetMetric(metricName, metricLabels, float64(metricEpochTimestamp)/1e9)
+			err = croResources.SetMetric(metricName, metricLabels, float64(metricEpochTimestamp)/1e9)
+			if err != nil {
+				msg := fmt.Sprintf("exception calling SetMetric with metricName: %s", metricName)
+				return nil, croType.StatusMessage(msg), errorUtil.Wrap(err, msg)
+			}
 		}
 	}
 
