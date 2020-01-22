@@ -33,8 +33,8 @@ import (
 )
 
 const (
-	CRO_AWS_ELASTICACHE_SERVICE_MAINTENANCE = "cro_aws_elasticache_service_maintenance"
-	redisProviderName                       = "aws-elasticache"
+	CROAWSElastiCacheServiceMaintenance = "cro_aws_elasticache_service_maintenance"
+	redisProviderName                   = "aws-elasticache"
 	// default create params
 	defaultCacheNodeType     = "cache.t2.micro"
 	defaultEngineVersion     = "3.2.10"
@@ -110,7 +110,7 @@ func (p *AWSRedisProvider) CreateRedis(ctx context.Context, r *v1alpha1.Redis) (
 	}
 
 	logrus.Info(fmt.Sprintf("there are elasticache serviceupdates: %d available", len(output.ServiceUpdates)))
-	metricName := CRO_AWS_ELASTICACHE_SERVICE_MAINTENANCE
+	metricName := CROAWSElastiCacheServiceMaintenance
 	for _, su := range output.ServiceUpdates {
 		metricLabels := map[string]string{}
 

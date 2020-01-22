@@ -37,9 +37,9 @@ import (
 )
 
 const (
-	CRO_AWS_RDS_SERVICE_MAINTENANCE = "cro_aws_rds_service_maintenance"
-	postgresProviderName            = "aws-rds"
-	DefaultAwsIdentifierLength      = 40
+	CROAWSRDSServiceMaintenance = "cro_aws_rds_service_maintenance"
+	postgresProviderName        = "aws-rds"
+	DefaultAwsIdentifierLength  = 40
 	// default create options
 	defaultAwsPostgresDeletionProtection = true
 	defaultAwsPostgresPort               = 5432
@@ -140,7 +140,7 @@ func (p *AWSPostgresProvider) CreatePostgres(ctx context.Context, pg *v1alpha1.P
 	}
 
 	logrus.Info(fmt.Sprintf("rds serviceupdates: %d available", len(output.PendingMaintenanceActions)))
-	metricName := CRO_AWS_RDS_SERVICE_MAINTENANCE
+	metricName := CROAWSRDSServiceMaintenance
 	for _, su := range output.PendingMaintenanceActions {
 		metricLabels := map[string]string{}
 
