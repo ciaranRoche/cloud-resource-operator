@@ -33,7 +33,8 @@ import (
 )
 
 const (
-	CROAWSElastiCacheServiceMaintenance = "cro_aws_elasticache_service_maintenance"
+	CROAWSElasticacheServiceMaintenance = "cro_aws_elasticache_service_maintenance"
+	defaultCroAwsElasticacheInfo        = "cro_aws_elasticache_info"
 	redisProviderName                   = "aws-elasticache"
 	// default create params
 	defaultCacheNodeType     = "cache.t2.micro"
@@ -181,6 +182,11 @@ func (p *AWSRedisProvider) createElasticacheCluster(ctx context.Context, r *v1al
 			return nil, croType.StatusMessage(errMsg), errorUtil.Wrap(err, errMsg)
 		}
 		return nil, "started elasticache provision", nil
+	}
+
+	// set status metric
+	if err := p.setRedisInfoMetric(ctx, r, foundCache); err != nil {
+		return nil, "failed to set metric", err
 	}
 
 	// check elasticache phase
@@ -380,6 +386,11 @@ func (p *AWSRedisProvider) deleteElasticacheCluster(cacheSvc elasticacheiface.El
 		return croType.StatusEmpty, nil
 	}
 
+	// set status metric
+	if err := p.setRedisInfoMetric(ctx, r, foundCache); err != nil {
+		return "failed to set metric", err
+	}
+
 	// if status is not available return
 	if *foundCache.Status != "available" {
 		return croType.StatusMessage(fmt.Sprintf("delete detected, deleteReplicationGroup() in progress, current aws elasticache status is %s", *foundCache.Status)), nil
@@ -509,5 +520,36 @@ func (p *AWSRedisProvider) buildElasticacheDeleteConfig(ctx context.Context, r v
 	if elasticacheDeleteConfig.FinalSnapshotIdentifier != nil && *elasticacheDeleteConfig.FinalSnapshotIdentifier == "" {
 		elasticacheDeleteConfig.FinalSnapshotIdentifier = aws.String(snapshotIdentifier)
 	}
+	return nil
+}
+
+func buildRedisInfoMetricLables(r *v1alpha1.Redis, cache *elasticache.ReplicationGroup, clusterID string) (map[string]string, error) {
+	labels := map[string]string{}
+	labels["clusterID"] = clusterID
+	labels["resourceID"] = r.Name
+	labels["namespace"] = r.Namespace
+	labels["instanceID"] = *cache.ReplicationGroupId
+	labels["status"] = *cache.Status
+	return labels, nil
+}
+
+func (p *AWSRedisProvider) setRedisInfoMetric(ctx context.Context, cr *v1alpha1.Redis, instance *elasticache.ReplicationGroup) error {
+	logrus.Info("setting redis information metric")
+	clusterId, err := resources.GetClusterId(ctx, p.Client)
+	if err != nil {
+		return errorUtil.Wrap(err, "failed to get cluster id")
+	}
+
+	// build metric labels
+	labels, err := buildRedisInfoMetricLables(cr, instance, clusterId)
+	if err != nil {
+		return errorUtil.Wrap(err, "failed to build metric labels")
+	}
+
+	// set status gauge
+	if err := resources.SetMetricCurrentTime(defaultCroAwsElasticacheInfo, labels); err != nil {
+		return err
+	}
+
 	return nil
 }

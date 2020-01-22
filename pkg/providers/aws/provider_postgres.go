@@ -37,9 +37,10 @@ import (
 )
 
 const (
-	CROAWSRDSServiceMaintenance = "cro_aws_rds_service_maintenance"
-	postgresProviderName        = "aws-rds"
-	DefaultAwsIdentifierLength  = 40
+	CROAWSRDSServiceMaintenance   = "cro_aws_rds_service_maintenance"
+	defaultPostgresInfoMetricName = "cro_aws_rds_info"
+	postgresProviderName          = "aws-rds"
+	DefaultAwsIdentifierLength    = 40
 	// default create options
 	defaultAwsPostgresDeletionProtection = true
 	defaultAwsPostgresPort               = 5432
@@ -221,6 +222,11 @@ func (p *AWSPostgresProvider) createRDSInstance(ctx context.Context, cr *v1alpha
 		return nil, "started rds provision", nil
 	}
 
+	// set status metric
+	if err := p.setPostgresInfoMetric(ctx, cr, foundInstance); err != nil {
+		return nil, croType.StatusMessage(fmt.Sprintf("error seting metric %s", err)), err
+	}
+
 	// check rds instance phase
 	if *foundInstance.DBInstanceStatus != "available" {
 		return nil, croType.StatusMessage(fmt.Sprintf("createRDSInstance() in progress, current aws rds resource status is %s", *foundInstance.DBInstanceStatus)), nil
@@ -254,7 +260,7 @@ func (p *AWSPostgresProvider) createRDSInstance(ctx context.Context, cr *v1alpha
 
 // Tags RDS resources
 func (p *AWSPostgresProvider) TagRDSPostgres(ctx context.Context, cr *v1alpha1.Postgres, rdsSvc rdsiface.RDSAPI, foundInstance *rds.DBInstance) (croType.StatusMessage, error) {
-	logrus.Infof("Adding Tags to RDS instance %s", *foundInstance.DBInstanceIdentifier)
+	logrus.Infof("adding tags to rds instance %s", *foundInstance.DBInstanceIdentifier)
 	// get the environment from the CR
 	// set the tag values that will always be added
 	defaultOrganizationTag := resources.GetOrganizationTag()
@@ -387,6 +393,11 @@ func (p *AWSPostgresProvider) deleteRDSInstance(ctx context.Context, pg *v1alpha
 			return croType.StatusMessage(msg), errorUtil.Wrapf(err, msg)
 		}
 		return croType.StatusEmpty, nil
+	}
+
+	// set status metric
+	if err := p.setPostgresInfoMetric(ctx, pg, foundInstance); err != nil {
+		return croType.StatusMessage(fmt.Sprintf("error seting metric %s", err)), err
 	}
 
 	// return if rds instance is not available
@@ -591,4 +602,36 @@ func buildDefaultRDSSecret(ps *v1alpha1.Postgres) *v1.Secret {
 		},
 		Type: v1.SecretTypeOpaque,
 	}
+}
+
+func buildPostgresInfoMetricLabels(cr *v1alpha1.Postgres, instance *rds.DBInstance, clusterId string) (map[string]string, error) {
+	labels := map[string]string{}
+	labels["clusterID"] = clusterId
+	labels["resourceID"] = cr.Name
+	labels["namespace"] = cr.Namespace
+	labels["instanceID"] = *instance.DBInstanceIdentifier
+	labels["status"] = *instance.DBInstanceStatus
+	return labels, nil
+}
+
+func (p *AWSPostgresProvider) setPostgresInfoMetric(ctx context.Context, cr *v1alpha1.Postgres, instance *rds.DBInstance) error {
+	// get Cluster Id
+	logrus.Info("setting postgres information metric")
+	clusterId, err := resources.GetClusterId(ctx, p.Client)
+	if err != nil {
+		return errorUtil.Wrapf(err, "failed to get cluster id")
+	}
+
+	// build metric labels
+	labels, err := buildPostgresInfoMetricLabels(cr, instance, clusterId)
+	if err != nil {
+		return errorUtil.Wrapf(err, "failed to build metric labels")
+	}
+
+	// set status gauge
+	if err := resources.SetMetricCurrentTime(defaultPostgresInfoMetricName, labels); err != nil {
+		return err
+	}
+
+	return nil
 }
