@@ -166,7 +166,7 @@ func (p *OpenShiftPostgresProvider) CreatePostgres(ctx context.Context, ps *v1al
 		return nil, croType.StatusMessage(errMsg), errorUtil.Wrap(err, errMsg)
 	}
 
-	p.Logger.Info("Found postgres deployment")
+	p.Logger.Info("found postgres deployment")
 	return &providers.PostgresInstance{
 		DeploymentDetails: &providers.PostgresDeploymentDetails{
 			Username: dbUser,

@@ -2,14 +2,14 @@ apiVersion: integreatly.org/v1alpha1
 kind: Postgres
 metadata:
   # name must be between 1-40 characters
-  name: example-postgres
+  name: example-postgres-1
   labels:
       # label for the product we are installing , subject to change
       productName: productName
 spec:
   # i want my postgres storage information output in a secret named example-postgres-sec
   secretRef:
-    name: example-postgres-sec
+    name: example-postgres-sec-1
   # i want a postgres storage of a development-level tier
   tier: development
   # the type i want for a postgres storage

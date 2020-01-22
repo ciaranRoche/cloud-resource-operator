@@ -4,6 +4,8 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"github.com/integr8ly/cloud-resource-operator/pkg/resources"
+	"github.com/prometheus/client_golang/prometheus"
 	"os"
 	"runtime"
 
@@ -16,6 +18,7 @@ import (
 	"github.com/integr8ly/cloud-resource-operator/pkg/apis"
 	"github.com/integr8ly/cloud-resource-operator/pkg/apis/integreatly/v1alpha1"
 	"github.com/integr8ly/cloud-resource-operator/pkg/controller"
+	errorUtil "github.com/pkg/errors"
 
 	monitoringv1 "github.com/coreos/prometheus-operator/pkg/apis/monitoring/v1"
 	"github.com/operator-framework/operator-sdk/pkg/k8sutil"
@@ -125,6 +128,10 @@ func main() {
 		log.Info("Could not generate and serve custom resource metrics", "error", err.Error())
 	}
 
+	if err = serveCustomMetrics(); err != nil {
+		log.Info("Could not generate custom metric vectors", "error", err.Error())
+	}
+
 	// Add to the below struct any other metrics ports you want to expose.
 	servicePorts := []v1.ServicePort{
 		{Port: metricsPort, Name: metrics.OperatorPortName, Protocol: v1.ProtocolTCP, TargetPort: intstr.IntOrString{Type: intstr.Int, IntVal: metricsPort}},
@@ -156,6 +163,15 @@ func main() {
 		log.Error(err, "Manager exited non-zero")
 		os.Exit(1)
 	}
+}
+
+// serves custom metric gauges
+func serveCustomMetrics() error {
+	log.Info("Registering custom metrics")
+	if err := prometheus.Register(resources.GetPostgresInfoGauge()); err != nil {
+		return errorUtil.Wrap(err, "unable register metric")
+	}
+	return nil
 }
 
 // serveCRMetrics gets the Operator/CustomResource GVKs and generates metrics based on those types.

@@ -188,6 +188,7 @@ func (p *AWSPostgresProvider) createRDSInstance(ctx context.Context, cr *v1alpha
 		return nil, "started rds provision", nil
 	}
 
+	// set info metric
 	if err := p.setInfoMetric(ctx, cr, foundInstance); err != nil {
 		return nil, croType.StatusMessage(fmt.Sprintf("error seting metric %s", err)), err
 	}
@@ -362,6 +363,11 @@ func (p *AWSPostgresProvider) deleteRDSInstance(ctx context.Context, pg *v1alpha
 			return croType.StatusMessage(msg), errorUtil.Wrapf(err, msg)
 		}
 		return croType.StatusEmpty, nil
+	}
+
+	// set info metric
+	if err := p.setInfoMetric(ctx, pg, foundInstance); err != nil {
+		return croType.StatusMessage(fmt.Sprintf("error seting metric %s", err)), err
 	}
 
 	// return if rds instance is not available
@@ -579,8 +585,8 @@ func buildInfoMetricLabels(cr *v1alpha1.Postgres, instance *rds.DBInstance, clus
 }
 
 func (p *AWSPostgresProvider) setInfoMetric(ctx context.Context, cr *v1alpha1.Postgres, instance *rds.DBInstance) error {
-	logrus.Info("setting postgres information metric")
 	// get Cluster Id
+	logrus.Info("setting postgres information metric")
 	clusterId, err := resources.GetClusterId(ctx, p.Client)
 	if err != nil {
 		msg := "failed to add get cluster id"
