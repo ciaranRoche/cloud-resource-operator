@@ -3,7 +3,7 @@ package resources
 import (
 	"bytes"
 	"context"
-	"github.com/integr8ly/cloud-resource-operator/pkg/apis/integreatly/v1alpha1"
+	crov1 "github.com/integr8ly/cloud-resource-operator/pkg/apis/config/v1"
 	"io"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -37,7 +37,7 @@ func GetPlatform(ctx context.Context, c client.Client) (v1.PlatformType, error) 
 }
 
 func GetAWSRegion(ctx context.Context, c client.Client) (string, error){
-	infra := &v1alpha1.Infrastructure{}
+	infra := &crov1.Infrastructure{}
 	if err := c.Get(ctx, types.NamespacedName{Name: "cluster"}, infra); err != nil {
 		return "", errorUtil.Wrap(err, "failed to retrieve cluster infrastructure")
 	}

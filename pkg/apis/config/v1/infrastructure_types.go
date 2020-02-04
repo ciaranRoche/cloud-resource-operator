@@ -1,8 +1,8 @@
-package v1alpha1
+package v1
 
 import (
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	v1 "github.com/openshift/api/config/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // +genclient
@@ -129,4 +129,8 @@ type InfrastructureList struct {
 	// Standard object's metadata.
 	metav1.ListMeta `json:"metadata"`
 	Items           []Infrastructure `json:"items"`
+}
+
+func init() {
+	SchemeBuilder.Register(&Infrastructure{}, &InfrastructureList{})
 }
