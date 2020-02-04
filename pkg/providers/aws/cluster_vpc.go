@@ -236,6 +236,19 @@ func getVpc(ctx context.Context, c client.Client, ec2Svc ec2iface.EC2API) (*ec2.
 		return nil, errorUtil.Wrap(err, "error getting clusterID")
 	}
 
+	provider, err := resources.GetPlatform(ctx, c)
+	if err != nil {
+		return nil, errorUtil.Wrap(err, "error get provider")
+	}
+
+	region, err := resources.GetAWSRegion(ctx, c)
+	if err != nil {
+		return nil, errorUtil.Wrap(err, "error get region")
+	}
+
+	fmt.Println("boop -> ", provider)
+	fmt.Println("snoop ->", region)
+
 	// find associated vpc to cluster
 	var foundVPC *ec2.Vpc
 	for _, vpc := range vpcs.Vpcs {

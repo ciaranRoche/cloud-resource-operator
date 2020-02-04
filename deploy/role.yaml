@@ -69,6 +69,8 @@ rules:
   - postgres
   - redissnapshots
   - postgressnapshots
+  - clusterinfras
+  - infrastructures
   verbs:
   - '*'
 - apiGroups:

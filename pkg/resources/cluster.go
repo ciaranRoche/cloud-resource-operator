@@ -3,6 +3,7 @@ package resources
 import (
 	"bytes"
 	"context"
+	"github.com/integr8ly/cloud-resource-operator/pkg/apis/integreatly/v1alpha1"
 	"io"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -25,6 +26,22 @@ func GetClusterID(ctx context.Context, c client.Client) (string, error) {
 		return "", errorUtil.Wrap(err, "failed to retrieve cluster infrastructure")
 	}
 	return infra.Status.InfrastructureName, nil
+}
+
+func GetPlatform(ctx context.Context, c client.Client) (v1.PlatformType, error) {
+	infra := &v1.Infrastructure{}
+	if err := c.Get(ctx, types.NamespacedName{Name: "cluster"}, infra); err != nil {
+		return "", errorUtil.Wrap(err, "failed to retrieve cluster infrastructure")
+	}
+	return infra.Status.Platform , nil
+}
+
+func GetAWSRegion(ctx context.Context, c client.Client) (string, error){
+	infra := &v1alpha1.Infrastructure{}
+	if err := c.Get(ctx, types.NamespacedName{Name: "cluster"}, infra); err != nil {
+		return "", errorUtil.Wrap(err, "failed to retrieve cluster infrastructure")
+	}
+	return infra.Status.PlatformStatus.AWS.Region, nil
 }
 
 //go:generate moq -out cluster_moq.go . PodCommander
