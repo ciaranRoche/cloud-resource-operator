@@ -130,3 +130,7 @@ type InfrastructureList struct {
 	metav1.ListMeta `json:"metadata"`
 	Items           []Infrastructure `json:"items"`
 }
+
+func init() {
+	SchemeBuilder.Register(&Infrastructure{}, &InfrastructureList{})
+}
