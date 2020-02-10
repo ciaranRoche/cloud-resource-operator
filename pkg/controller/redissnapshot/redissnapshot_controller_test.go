@@ -6,7 +6,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/elasticache"
 	"github.com/aws/aws-sdk-go/service/elasticache/elasticacheiface"
 	"github.com/integr8ly/cloud-resource-operator/pkg/apis"
-	v12 "github.com/integr8ly/cloud-resource-operator/pkg/apis/config/v1"
+	crov1 "github.com/integr8ly/cloud-resource-operator/pkg/apis/config/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -46,12 +46,12 @@ func buildTestScheme() (*runtime.Scheme, error) {
 	return scheme, nil
 }
 
-func buildTestInfrastructure() *v12.Infrastructure {
-	return &v12.Infrastructure{
+func buildTestInfrastructure() *crov1.Infrastructure {
+	return &crov1.Infrastructure{
 		ObjectMeta: controllerruntime.ObjectMeta{
 			Name: "cluster",
 		},
-		Status: v12.InfrastructureStatus{
+		Status: crov1.InfrastructureStatus{
 			InfrastructureName: "test",
 		},
 	}

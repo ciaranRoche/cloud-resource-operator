@@ -2,7 +2,7 @@ package aws
 
 import (
 	"context"
-	v12 "github.com/integr8ly/cloud-resource-operator/pkg/apis/config/v1"
+	crov1 "github.com/integr8ly/cloud-resource-operator/pkg/apis/config/v1"
 	"reflect"
 	"testing"
 	"time"
@@ -147,12 +147,12 @@ func buildTestPostgresCR() *v1alpha1.Postgres {
 	}
 }
 
-func buildTestInfra() *v12.Infrastructure {
-	return &v12.Infrastructure{
+func buildTestInfra() *crov1.Infrastructure {
+	return &crov1.Infrastructure{
 		ObjectMeta: controllerruntime.ObjectMeta{
 			Name: "cluster",
 		},
-		Status: v12.InfrastructureStatus{
+		Status: crov1.InfrastructureStatus{
 			InfrastructureName: "test",
 		},
 	}

@@ -57,13 +57,23 @@ func configureSecurityGroup(ctx context.Context, c client.Client, ec2Svc ec2ifac
 	if foundSecGroup == nil {
 		// create security group
 		logrus.Info(fmt.Sprintf("creating security group from cluster %s", clusterID))
-		if _, err := ec2Svc.CreateSecurityGroup(&ec2.CreateSecurityGroupInput{
+		secOutPut, err := ec2Svc.CreateSecurityGroup(&ec2.CreateSecurityGroupInput{
 			Description: aws.String(fmt.Sprintf("security group for cluster %s", clusterID)),
 			GroupName:   aws.String(secName),
 			VpcId:       aws.String(vpcID),
-		}); err != nil {
+		})
+		if err != nil {
 			return errorUtil.Wrap(err, "error creating security group")
 		}
+
+		// tag security group
+		res := []*string{
+			aws.String(*secOutPut.GroupId),
+		}
+		if err := tagResource(ctx, c, ec2Svc, res, []*ec2.Tag{} ); err != nil {
+			return errorUtil.Wrap(err, "error creating tags on security group")
+		}
+
 		return nil
 	}
 
@@ -213,11 +223,14 @@ func createPrivateSubnet(ctx context.Context, c client.Client, ec2Svc ec2iface.E
 	// create subnet looping through potential subnet list
 	var subnet *ec2.Subnet
 	for _, ip := range subs {
+		// create subnet
 		createOutput, err := ec2Svc.CreateSubnet(&ec2.CreateSubnetInput{
 			AvailabilityZone: aws.String(zone),
 			CidrBlock:        aws.String(ip),
 			VpcId:            aws.String(*vpc.VpcId),
 		})
+
+		// handle potential errors
 		ec2err, isAwsErr := err.(awserr.Error)
 		if err != nil && isAwsErr && ec2err.Code() == "InvalidSubnet.Conflict" {
 			logrus.Info(fmt.Sprintf("%s conflicts with a current subnet, trying again", ip))
@@ -226,8 +239,21 @@ func createPrivateSubnet(ctx context.Context, c client.Client, ec2Svc ec2iface.E
 		if err != nil {
 			return nil, errorUtil.Wrap(err, "error creating new subnet")
 		}
-		if newErr := tagPrivateSubnet(ctx, c, ec2Svc, createOutput.Subnet); newErr != nil {
-			return nil, newErr
+
+		// build tags
+		res := []*string{
+			createOutput.Subnet.SubnetId,
+		}
+		tags := []*ec2.Tag{
+			{
+				Key:   aws.String(defaultAWSPrivateSubnetTagKey),
+				Value: aws.String("1"),
+			},
+		}
+
+		// tag subnet
+		if nErr := tagResource(ctx, c, ec2Svc, res, tags); nErr != nil {
+			return nil, errorUtil.Wrap(nErr, "failed to tag resource")
 		}
 		logrus.Info(fmt.Sprintf("created new subnet %s in %s", ip, *vpc.VpcId))
 		subnet = createOutput.Subnet
@@ -237,33 +263,40 @@ func createPrivateSubnet(ctx context.Context, c client.Client, ec2Svc ec2iface.E
 	return subnet, nil
 }
 
-// tags a private subnet with the default aws private subnet tag
-func tagPrivateSubnet(ctx context.Context, c client.Client, ec2Svc ec2iface.EC2API, sub *ec2.Subnet) error {
-	logrus.Info(fmt.Sprintf("adding tags to subnet %s", *sub.SubnetId))
+
+// tags a resource with the default rhmi cluster tag and any additional tags passed
+func tagResource(ctx context.Context, c client.Client, ec2Svc ec2iface.EC2API, res []*string, tags []*ec2.Tag) error {
+	logrus.Info("adding tags to resource")
 	// get cluster id
 	clusterID, err := resources.GetClusterID(ctx, c)
 	if err != nil {
 		return errorUtil.Wrap(err, "error getting clusterID")
 	}
-	organizationTag := resources.GetOrganizationTag()
 
+	// set default tag
+	allTags := []*ec2.Tag{
+		{
+			Key:   aws.String(fmt.Sprintf("%sclusterID", resources.GetOrganizationTag())),
+			Value: aws.String(clusterID),
+		},
+	}
+
+	// set any additional tags
+	if len(tags) > 0 {
+		for _, tag := range tags {
+			allTags = append(allTags, tag)
+		}
+	}
+
+	// create tags
 	_, err = ec2Svc.CreateTags(&ec2.CreateTagsInput{
-		Resources: []*string{
-			aws.String(*sub.SubnetId),
-		},
-		Tags: []*ec2.Tag{
-			{
-				Key:   aws.String(defaultAWSPrivateSubnetTagKey),
-				Value: aws.String("1"),
-			}, {
-				Key:   aws.String(fmt.Sprintf("%sclusterID", organizationTag)),
-				Value: aws.String(clusterID),
-			},
-		},
+		Resources: res,
+		Tags: allTags,
 	})
 	if err != nil {
-		return errorUtil.Wrap(err, "failed to tag subnet")
+		return errorUtil.Wrap(err, "failed to tag resource")
 	}
+
 	return nil
 }
 
