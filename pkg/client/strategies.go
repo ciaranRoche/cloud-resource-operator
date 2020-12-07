@@ -41,7 +41,7 @@ type StrategyTimeConfig struct {
 
 // ReconcileStrategyMaps to be used to reconcile strategy maps expected in RHMI installs
 // A single function which can check the infrastructure and provision the correct strategy config map
-func ReconcileStrategyMaps(ctx context.Context, client client.Client, timeConfig *StrategyTimeConfig, tier, namespace string) error {
+func (c *CloudResourceService) ReconcileStrategyMaps(ctx context.Context, client client.Client, timeConfig *StrategyTimeConfig, tier, namespace string) error {
 	// reconciles aws specific strategy map
 	if err := reconcileAWSStrategyMap(ctx, client, timeConfig, tier, namespace); err != nil {
 		return errorUtil.Wrapf(err, "failed to reconcile aws strategy map")
